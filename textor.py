@@ -84,12 +84,18 @@ class TextorTrainer(object):
             total_loss = torch.Tensor([0])
             if self._cuda:
                 total_loss = total_loss.cuda()
-            for context, target in self._ngram_loader.ngrams():
+            for context_batch, target_batch in self._ngram_loader.ngrams_batch(1, 3000):
                 #self.__logger.debug("context : {} , target: {}".format(context, target))
                 # Step 1. Prepare the inputs to be passed to the model (i.e, turn the words
                 # into integer indices and wrap them in variables)
-                context_idxs = [self._words_to_ix[w] for w in context]
-                context_var = autograd.Variable(torch.LongTensor(context_idxs))
+                context_batch_idxs = []
+                
+                for context in context_batch:
+                    context_idxs = [self._words_to_ix[w] for w in context]
+                    context_batch_idxs.append(context_idxs)
+
+                context_var = autograd.Variable(torch.LongTensor(context_batch_idxs))
+                
                 if self._cuda:
                     context_var = context_var.cuda()
 
@@ -104,7 +110,9 @@ class TextorTrainer(object):
 
                 # Step 4. Compute your loss function. (Again, Torch wants the target
                 # word wrapped in a variable)
-                target_var = autograd.Variable(torch.LongTensor([self._words_to_ix[target]]))
+                target_batch_idxs = [self._words_to_ix[target] for target in target_batch]
+                target_var = autograd.Variable(torch.LongTensor(target_batch_idxs))
+
                 if self._cuda:
                     target_var = target_var.cuda()
                 loss = loss_function(log_probs, target_var)
@@ -114,9 +122,10 @@ class TextorTrainer(object):
                 optimizer.step()
 
                 total_loss += loss.data
+            self.__logger.info("Epoch {}: loss = {}".format(epoch, int(total_loss)))
             losses.append(total_loss)
-        time_elapsed = int((time.time() - start_time)/(1000)) 
-        self.__logger.info("training time for {} epochs  : {} seconds}".format(epochs, int((time.time()-start_time)/1000)))
+        time_elapsed = int((time.time() - start_time)) 
+        self.__logger.info("training time for {} epochs  : {} seconds".format(epochs, time_elapsed))
         torch.save(model, 'models/ngram_test.pt')
     
     def words_to_ix(self):
@@ -160,7 +169,7 @@ class TextorPredict(object):
             context = tuple(context)
 
         context_text = [self._rev_lookup[idx] for idx in context]
-        print(context_text)
+        logging.debug("random init : {}".format(context_text))
         for i in range(n):
 
             context_var = autograd.Variable(torch.LongTensor(context))
@@ -188,13 +197,13 @@ if __name__=="__main__":
 
     import sys
 
-    context_size = 5
+    context_size = 3
     textor_trainer = TextorTrainer(sys.argv[1], context_size = context_size)
-    textor_trainer.train(epochs = 300 )
+    #textor_trainer.train(epochs = 800 )
 
-    textor_predictor = TextorPredict('models/ngram_test.pt', 'data/test_chapter.json', context_size = context_size)
+    textor_predictor = TextorPredict('models/ngram_test.pt', 'data/test_book.json', context_size = context_size)
 
-    for text in textor_predictor.predict(n=30):
+    for text in textor_predictor.predict(n=100):
         print(text , end=" ")
 
     print("\n")
